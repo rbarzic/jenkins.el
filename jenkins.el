@@ -407,8 +407,14 @@
     (with-current-buffer console-buffer
       (read-only-mode -1)
       (erase-buffer)
+      (set-buffer-multibyte t)
       (with-current-buffer (url-retrieve-synchronously url)
-        (copy-to-buffer console-buffer (point-min) (point-max))))
+        (goto-char (point-min))
+        (if (re-search-forward "^$" nil t)
+            (forward-char 1))
+        (let ((content (buffer-substring-no-properties (point) (point-max))))
+          (with-current-buffer console-buffer
+            (insert (decode-coding-string content 'utf-8))))))
     (pop-to-buffer console-buffer)
     (jenkins-console-output-mode)))
 
@@ -456,11 +462,13 @@
 
 (define-derived-mode jenkins-console-output-mode special-mode "jenkins-console-output"
   "Mode for viewing jenkins console output"
-  ;; make buffer readonly
   (read-only-mode)
-  ;; remove ^M from the output
+  (visual-line-mode 1)
   (setq buffer-display-table (make-display-table))
-  (aset buffer-display-table ?\^M []))
+  (aset buffer-display-table ?\^M [])
+  (when (require 'ansi-color nil t)
+    (let ((inhibit-read-only t))
+      (ansi-color-apply-on-region (point-min) (point-max)))))
 
 (defun jenkins-job-render (jobname)
   "Render details buffer for JOBNAME."
