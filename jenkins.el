@@ -41,6 +41,8 @@
 
 (defvar jenkins-mode-map
   (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "a") 'jenkins-toggle-auto-refresh)
+    (define-key map (kbd "g") 'jenkins--refresh-display)
     (define-key map (kbd "b") 'jenkins--call-build-job-from-main-screen)
     (define-key map (kbd "r") 'jenkins--call-rebuild-job-from-main-screen)
     (define-key map (kbd "v") 'jenkins--visit-job-from-main-screen)
@@ -118,6 +120,14 @@
   "Status column's width on main view."
   :type 'integer
   :group 'jenkins)
+
+(defcustom jenkins-auto-refresh-interval 30
+  "Auto-refresh interval in seconds.  Set to 0 to disable auto-refresh."
+  :type 'integer
+  :group 'jenkins)
+
+(defvar jenkins--auto-refresh-timer nil
+  "Timer for auto-refreshing the Jenkins buffer.")
 
 (defun jenkins-list-format ()
   "List of columns for main jenkins jobs screen."
@@ -437,7 +447,9 @@
   (setq tabulated-list-format (jenkins-list-format))
   (setq tabulated-list-entries 'jenkins--refresh-jobs-list)
   (tabulated-list-init-header)
-  (tabulated-list-print))
+  (tabulated-list-print)
+  (jenkins--start-auto-refresh)
+  (add-hook 'kill-buffer-hook 'jenkins--stop-auto-refresh nil t))
 
 (define-derived-mode jenkins-job-view-mode special-mode "jenkins-job"
   "Mode for viewing jenkins job details"
@@ -585,6 +597,44 @@
 (defun jenkins--get-views-url ()
   "URL to fetch list of views from Jenkins."
   (format "%sapi/json?tree=views[name,url]" (get-jenkins-url)))
+
+(defun jenkins--start-auto-refresh ()
+  "Start auto-refresh timer for Jenkins buffer."
+  (when (and (> jenkins-auto-refresh-interval 0)
+             (not jenkins--auto-refresh-timer))
+    (setq jenkins--auto-refresh-timer
+          (run-at-time nil jenkins-auto-refresh-interval
+                       (lambda ()
+                         (when (buffer-live-p (get-buffer jenkins-buffer-name))
+                           (with-current-buffer jenkins-buffer-name
+                             (jenkins--refresh-display))))))))
+
+(defun jenkins--stop-auto-refresh ()
+  "Stop auto-refresh timer for Jenkins buffer."
+  (when jenkins--auto-refresh-timer
+    (cancel-timer jenkins--auto-refresh-timer)
+    (setq jenkins--auto-refresh-timer nil)))
+
+(defun jenkins--refresh-display ()
+  "Refresh the Jenkins display without clearing breadcrumbs."
+  (interactive)
+  (let ((inhibit-read-only t))
+    (erase-buffer))
+  (setq tabulated-list-entries 'jenkins--refresh-jobs-list)
+  (tabulated-list-print t))
+
+(defun jenkins-toggle-auto-refresh ()
+  "Toggle auto-refresh for Jenkins buffer."
+  (interactive)
+  (if jenkins--auto-refresh-timer
+      (progn
+        (jenkins--stop-auto-refresh)
+        (message "Jenkins auto-refresh stopped"))
+    (if (> jenkins-auto-refresh-interval 0)
+        (progn
+          (jenkins--start-auto-refresh)
+          (message "Jenkins auto-refresh started (interval: %ds)" jenkins-auto-refresh-interval))
+      (message "Auto-refresh disabled. Set `jenkins-auto-refresh-interval' > 0 to enable."))))
 
 (defun jenkins--fetch-views ()
   "Fetch list of available views from Jenkins server."
