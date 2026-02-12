@@ -390,14 +390,13 @@
                       )))
 
 (defun jenkins-get-console-output (jobname build)
-  "Show the console output for the current job"
-  (let ((url-request-extra-headers (jenkins--get-auth-headers))
-        (console-buffer (get-buffer-create (format "*jenkins-console-%s-%s*" jobname build)))
-        (url (format "%s%s/%s/consoleText" (get-jenkins-url)
-                     (mapconcat (lambda (a) (concat "job/" a)) (reverse *jenkins-breadcrumbs*) "/")
-                     build)))
+  "Show the console output for the current job.  JOBNAME is fullName like 'Omega/Datasheet'."
+  (let* ((job-path (mapconcat (lambda (a) (concat "job/" a)) (split-string jobname "/") "/"))
+         (url-request-extra-headers (jenkins--get-auth-headers))
+         (console-buffer (get-buffer-create (format "*jenkins-console-%s-%s*" jobname build)))
+         (url (format "%s%s/%s/consoleText" (get-jenkins-url) job-path build)))
     (with-current-buffer console-buffer
-      (read-only-mode -1)    ; make sure buffer is writable
+      (read-only-mode -1)
       (erase-buffer)
       (with-current-buffer (url-retrieve-synchronously url)
         (copy-to-buffer console-buffer (point-min) (point-max))))
