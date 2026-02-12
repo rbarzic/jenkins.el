@@ -178,7 +178,7 @@
            (if jenkins-viewname "view/%s/" jenkins-viewname "")
            (mapconcat (lambda (a) (concat "job/" a)) (reverse *jenkins-breadcrumbs*) "/")
            "/api/"
-           "json?depth=2&tree=name,jobs[name,class"
+           "json?depth=2&tree=name,fullName,jobs[name,fullName,class"
            "lastSuccessfulBuild[result,timestamp,duration,id],"
            "lastFailedBuild[result,timestamp,duration,id],"
            "lastBuild[result,executor[progress]],"
@@ -192,15 +192,10 @@
           (get-jenkins-url) jenkins-viewname))
 
 (defun jenkins-job-url (jobname)
-  "JOBNAME url in jenkins."
-  (format (concat
-           "%s"
-           (mapconcat (lambda (a) (concat "job/" a)) (reverse *jenkins-breadcrumbs*) "/")
-           ;;"/job/%s/"
-           "/api/json?depth=1&tree=builds"
-           "[number,timestamp,result,url,building,"
-           "culprits[fullName]]")
-          (get-jenkins-url) jobname))
+  "JOBNAME url in jenkins.  JOBNAME is fullName like 'Omega/Datasheet'."
+  (let* ((job-path (mapconcat (lambda (a) (concat "job/" a)) (split-string jobname "/") "/")))
+    (format "%s%s/api/json?depth=1&tree=builds[number,timestamp,result,url,building,culprits[fullName]]"
+            (get-jenkins-url) job-path)))
 
 (defun jenkins--setup-variables ()
   "Ask from user required variables if they not defined yet."
@@ -240,17 +235,17 @@
   "Use global jenkins-jobs-list prepare data from table."
   (--map
    (list
-    (plist-get it :name)
+    (car it)
     (apply 'vector
            (-map
             (lambda (column)
               (let* ((args (nthcdr 3 column))
                      (col-source (plist-get args :col-source)))
                 (if (functionp col-source)
-                    (funcall col-source it)
-                  (plist-get it col-source))))
+                    (funcall col-source (cdr it))
+                  (plist-get (cdr it) col-source))))
             (jenkins-list-format))))
-   (mapcar 'cdr *jenkins-jobs-list*)))
+   *jenkins-jobs-list*))
 
 ;;; actions
 
@@ -309,8 +304,7 @@
       (goto-char (point-min))
       (re-search-forward "^$")
       (delete-region (point) (point-min))
-      (json-read-from-string (buffer-string)))
-    ))
+      (json-read-from-string (buffer-string)))))
 
 (defun jenkins--extract-time-of-build (x buildname)
   "Helper defun to render timestamps."
@@ -325,7 +319,7 @@
           (raw-data (jenkins--retrieve-page-as-json jobs-url))
           (jobs (cdr (assoc 'jobs raw-data))))
      (--map
-      (apply 'list (cdr (assoc 'name it))
+      (apply 'list (cdr (or (assoc 'fullName it) (assoc 'name it)))
              (jenkins--make-job
               (cdr (assoc '_class it))
               (cdr (assoc 'name it))
