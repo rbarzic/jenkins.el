@@ -393,11 +393,10 @@
   (browse-url (get-jenkins-url)))
 
 (defun jenkins-visit-job (jobname)
-  "Open job's webpage using JOBNAME."
+  "Open job's webpage using JOBNAME (fullName like 'Omega/Datasheet')."
   (interactive)
-  (browse-url (format "%s/%s/" (get-jenkins-url)
-                      (mapconcat (lambda (a) (concat "job/" a)) (reverse *jenkins-breadcrumbs*) "/")
-                      )))
+  (let ((job-path (mapconcat (lambda (a) (concat "job/" a)) (split-string jobname "/") "/")))
+    (browse-url (format "%s%s/" (get-jenkins-url) job-path))))
 
 (defun jenkins-get-console-output (jobname build)
   "Show the console output for the current job.  JOBNAME is fullName like 'Omega/Datasheet'."
@@ -500,21 +499,21 @@
   (goto-line 4))
 
 (defun jenkins-job-call-build (jobname)
-  "Call jenkins build JOBNAME function."
-  (let ((url-request-extra-headers (jenkins--get-auth-headers))
-        (url-request-method "POST")
-        (build-url (format "%s/%s/build" (get-jenkins-url)
-           (mapconcat (lambda (a) (concat "job/" a)) (reverse *jenkins-breadcrumbs*) "/"))))
+  "Call jenkins build JOBNAME function.  JOBNAME is fullName like 'Omega/Datasheet'."
+  (let* ((job-path (mapconcat (lambda (a) (concat "job/" a)) (split-string jobname "/") "/"))
+         (url-request-extra-headers (jenkins--get-auth-headers))
+         (url-request-method "POST")
+         (build-url (format "%s%s/build" (get-jenkins-url) job-path)))
     (when (y-or-n-p (format "Ready to start %s?" jobname))
       (with-current-buffer (url-retrieve-synchronously build-url)
         (message (format "Building %s job started!" jobname))))))
 
 (defun jenkins-job-call-rebuild (jobname)
-  "Call jenkins build JOBNAME function."
-  (let ((url-request-extra-headers (jenkins--get-auth-headers))
-        (url-request-method "GET")
-        (build-url (format "%s/%s/build" (get-jenkins-url)
-           (mapconcat (lambda (a) (concat "job/" a)) (reverse *jenkins-breadcrumbs*) "/"))))
+  "Call jenkins rebuild JOBNAME function.  JOBNAME is fullName like 'Omega/Datasheet'."
+  (let* ((job-path (mapconcat (lambda (a) (concat "job/" a)) (split-string jobname "/") "/"))
+         (url-request-extra-headers (jenkins--get-auth-headers))
+         (url-request-method "GET")
+         (build-url (format "%s%s/build" (get-jenkins-url) job-path)))
     (when (y-or-n-p (format "Ready to rebuild %s?" jobname))
       (with-current-buffer (url-retrieve-synchronously build-url)
         (message (format "Building %s job started!" jobname))))))
