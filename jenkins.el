@@ -44,6 +44,7 @@
     (define-key map (kbd "b") 'jenkins--call-build-job-from-main-screen)
     (define-key map (kbd "r") 'jenkins--call-rebuild-job-from-main-screen)
     (define-key map (kbd "v") 'jenkins--visit-job-from-main-screen)
+    (define-key map (kbd "V") 'jenkins-select-view)
     (define-key map (kbd "RET") 'jenkins-enter-job)
     (define-key map (kbd "q") 'jenkins-pop-and-reload)
     map)
@@ -98,12 +99,17 @@
   :type 'string
   :group 'jenkins)
 
+(defcustom jenkins-use-short-names nil
+  "If non-nil, display short job names instead of full names (folder/job)."
+  :type 'boolean
+  :group 'jenkins)
+
 (defcustom jenkins-colwidth-id 3
   "Id column's width on main view."
   :type 'integer
   :group 'jenkins)
 
-(defcustom jenkins-colwidth-name 35
+(defcustom jenkins-colwidth-name 50
   "Name column's width on main view."
   :type 'integer
   :group 'jenkins)
@@ -163,7 +169,9 @@
 
 (defun jenkins--render-name (item)
   "Render jobname for main jenkins job ITEM screen."
-  (let ((jobname (plist-get item :name))
+  (let ((jobname (if jenkins-use-short-names
+                     (plist-get item :name)
+                   (or (plist-get item :fullname) (plist-get item :name))))
         (progress (plist-get item :progress)))
     (if progress
         (format "%s %s"
@@ -208,9 +216,10 @@
 
 ;; models
 
-(defun jenkins--make-job (class name result progress last-success last-failed)
+(defun jenkins--make-job (class name fullname result progress last-success last-failed)
   "Define regular jenkins job here."
   (list :name name
+        :fullname fullname
         :result result
         :progress progress
         :last-success last-success
@@ -323,6 +332,7 @@
              (jenkins--make-job
               (cdr (assoc '_class it))
               (cdr (assoc 'name it))
+              (cdr (or (assoc 'fullName it) (assoc 'name it)))
               (cdr (assoc 'result (assoc 'lastCompletedBuild it)))
               (cdr (assoc 'progress (assoc 'executor (assoc 'lastBuild it))))
               (jenkins--extract-time-of-build it 'lastSuccessfulBuild)
@@ -572,6 +582,29 @@
      )))
 
 ;;;###autoload
+(defun jenkins--get-views-url ()
+  "URL to fetch list of views from Jenkins."
+  (format "%sapi/json?tree=views[name,url]" (get-jenkins-url)))
+
+(defun jenkins--fetch-views ()
+  "Fetch list of available views from Jenkins server."
+  (let* ((views-url (jenkins--get-views-url))
+         (raw-data (jenkins--retrieve-page-as-json views-url))
+         (views (cdr (assoc 'views raw-data))))
+    (--map (cdr (assoc 'name it)) views)))
+
+(defun jenkins-select-view ()
+  "Select a Jenkins view from available views and refresh the buffer."
+  (interactive)
+  (let* ((views (jenkins--fetch-views))
+         (selected (completing-read "Select view: " views nil t)))
+    (when (and selected (not (string-empty-p selected)))
+      (setq jenkins-viewname selected)
+      (setq *jenkins-breadcrumbs* nil)
+      (let ((inhibit-read-only t))
+        (erase-buffer))
+      (jenkins-mode))))
+
 (defun jenkins ()
   "Initialize jenkins buffer."
   (interactive)
